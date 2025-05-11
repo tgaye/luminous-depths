@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Luminous Depths</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #001f3f;
+       
+  frameRate(60); }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/p5@1.8.0/lib/p5.js"></script>
+
+<base target="_self">
+
+
+  <button id="fs-toggle">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+      <path d="M1.5 1H6v1.5H3v3H1.5V1zM10 1h4.5v4.5H13v-3h-3V1zM1.5 10.5H3v3h3V15H1.5v-4.5zM13 13.5v-3h1.5V15H10v-1.5h3z"></path>
+    </svg>
+  </button>
+    <script>
+        const sketch = (p) => {
+            let jellyfish = [];
+            let particles = [];
+            let bubbles = [];
+            let lightRays = [];
+            let bgGradient;
+            let lastClickTime = 0;
+            let clickPulseRadius = 0;
+            let clickPulseAlpha = 0;
+            let soundEnabled = false;
+            let audioContext;
+            let oceanSound;
+            let clickSound;
+
+            p.preload = () => {
+                // Initialize audio context only when user interacts
+                if (soundEnabled) {
+                    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    oceanSound = p.loadSound('https://assets.codepen.io/417525/ocean-wave.mp3');
+                    clickSound = p.loadSound('https://assets.codepen.io/417525/water-drop.mp3');
+                }
+            };
+
+            p.setup = () => {
+                p.createCanvas(p.windowWidth, p.windowHeight);
+                p.colorMode(p.HSB, 360, 100, 100, 1);
+                p.noStroke();
+                p.ellipseMode(p.RADIUS);
+
+                // Create background gradient
+                bgGradient = p.drawingContext.createLinearGradient(0, 0, 0, p.height);
+                bgGradient.addColorStop(0, '#001f3f');
+                bgGradient.addColorStop(0.5, '#003366');
+                bgGradient.addColorStop(1, '#004080');
+
+                // Initialize jellyfish
+                for (let i = 0; i < 15; i++) {
+                    jellyfish.push(new Jellyfish());
+                }
+
+                // Initialize floating particles
+                for (let i = 0; i < 200; i++) {
+                    particles.push(new Particle());
+                }
+
+                // Initialize light rays
+                for (let i = 0; i < 5; i++) {
+                    lightRays.push(new LightRay());
+                }
+            };
+
+            p.draw = () => {
+                // Draw background
+                p.drawingContext.fillStyle = bgGradient;
+                p.drawingContext.fillRect(0, 0, p.width, p.height);
+
+                // Update and display light rays
+                for (let ray of lightRays) {
+                    ray.update();
+                    ray.display();
+                }
+
+                // Update and display particles
+                for (let particle of particles) {
+                    particle.update();
+                    particle.display();
+                }
+
+                // Update and display bubbles
+                for (let i = bubbles.length - 1; i >= 0; i--) {
+                    bubbles[i].update();
+                    bubbles[i].display();
+                    if (bubbles[i].isOffScreen()) {
+                        bubbles.splice(i, 1);
+                    }
+                }
+
+                // Update and display jellyfish
+                for (let j of jellyfish) {
+                    j.update();
+                    j.display();
+                }
+
+                // Display click pulse effect
+                if (clickPulseAlpha > 0) {
+                    p.push();
+                    p.noFill();
+                    p.stroke(200, 80, 100, clickPulseAlpha);
+                    p.strokeWeight(2);
+                    p.ellipse(p.mouseX, p.mouseY, clickPulseRadius);
+                    p.pop();
+                    clickPulseRadius += 5;
+                    clickPulseAlpha -= 0.02;
+                }
+
+                // Display subtle interactive hint
+                if (p.frameCount % 120 === 0 && p.frameCount < 360) {
+                    showInteractiveHint();
+                }
+            };
+
+            p.mouseMoved = () => {
+                // Attract jellyfish to cursor with some randomness
+                for (let j of jellyfish) {
+                    const distance = p.dist(p.mouseX, p.mouseY, j.pos.x, j.pos.y);
+                    if (distance < 200) {
+                        const angle = p.atan2(p.mouseY - j.pos.y, p.mouseX - j.pos.x);
+                        const force = p.map(distance, 0, 200, 0.5, 0.1);
+                        j.vel.add(p.cos(angle) * force, p.sin(angle) * force);
+                    }
+                }
+            };
+
+            p.mousePressed = () => {
+                // Create pulse effect
+                clickPulseRadius = 10;
+                clickPulseAlpha = 0.8;
+
+                // Create bubbles at click location
+                for (let i = 0; i < 10; i++) {
+                    bubbles.push(new Bubble(p.mouseX, p.mouseY));
+                }
+
+                // Play sound if enabled
+                if (soundEnabled && clickSound) {
+                    clickSound.play();
+                }
+            };
+
+            p.touchStarted = () => {
+                // Ensure touch works on mobile
+                p.mousePressed();
+                return false;
+            };
+
+            p.keyPressed = () => {
+                // Toggle sound with 's' key
+                if (p.key === 's' || p.key === 'S') {
+                    soundEnabled = !soundEnabled;
+                    if (soundEnabled && !audioContext) {
+                        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                        if (oceanSound) oceanSound.loop();
+                    } else if (!soundEnabled && oceanSound) {
+                        oceanSound.stop();
+                    }
+                }
+            };
+
+            p.windowResized = () => {
+                p.resizeCanvas(p.windowWidth, p.windowHeight);
+                // Recreate background gradient
+                bgGradient = p.drawingContext.createLinearGradient(0, 0, 0, p.height);
+                bgGradient.addColorStop(0, '#001f3f');
+                bgGradient.addColorStop(0.5, '#003366');
+                bgGradient.addColorStop(1, '#004080');
+            };
+
+            function showInteractiveHint() {
+                p.push();
+                p.fill(200, 80, 100, 0.7);
+                p.noStroke();
+                p.ellipse(p.width/2, p.height/2, 30);
+                p.fill(200, 80, 100);
+                p.textSize(16);
+                p.textAlign(p.CENTER, p.CENTER);
+                p.text('Click or move your cursor', p.width/2, p.height/2 + 40);
+                p.pop();
+            }
+
+            // Jellyfish class
+            class Jellyfish {
+                constructor() {
+                    this.reset();
+                    this.tentacleCount = p.floor(p.random(4, 8));
+                    this.tentacles = [];
+                    for (let i = 0; i < this.tentacleCount; i++) {
+                        this.tentacles.push({
+                            length: p.random(30, 60),
+                            segments: p.floor(p.random(5, 10)),
+                            noiseOffset: p.random(1000)
+                        });
+                    }
+                }
+
+                reset() {
+                    this.pos = p.createVector(
+                        p.random(p.width),
+                        p.random(p.height * 0.7)
+                    );
+                    this.vel = p.createVector(p.random(-0.5, 0.5), p.random(0.2, 0.8));
+                    this.size = p.random(30, 60);
+                    this.hue = p.random(300, 360);
+                    this.pulseSpeed = p.random(0.02, 0.05);
+                    this.pulsePhase = p.random(p.TWO_PI);
+                    this.noiseOffset = p.random(1000);
+                }
+
+                update() {
+                    // Apply gentle noise-based movement
+                    const noiseX = p.noise(this.noiseOffset) * 2 - 1;
+                    const noiseY = p.noise(this.noiseOffset + 1000) * 2 - 1;
+                    this.vel.add(noiseX * 0.1, noiseY * 0.1);
+                    this.vel.limit(1.5);
+                    this.pos.add(this.vel);
+                    this.noiseOffset += 0.01;
+
+                    // Boundary checking with wrap-around
+                    if (this.pos.x < -this.size) this.pos.x = p.width + this.size;
+                    if (this.pos.x > p.width + this.size) this.pos.x = -this.size;
+                    if (this.pos.y < -this.size * 2) this.reset();
+                    if (this.pos.y > p.height + this.size) this.pos.y = -this.size;
+
+                    // Update pulse phase
+                    this.pulsePhase += this.pulseSpeed;
+                }
+
+                display() {
+                    p.push();
+                    p.translate(this.pos.x, this.pos.y);
+
+                    // Draw glow effect
+                    const pulseSize = this.size * (1 + 0.2 * p.sin(this.pulsePhase));
+                    const glowAlpha = 0.3 + 0.2 * p.sin(this.pulsePhase * 2);
+                    p.fill(this.hue, 60, 100, glowAlpha);
+                    p.ellipse(0, 0, pulseSize * 1.5);
+
+                    // Draw body
+                    p.fill(this.hue, 80, 100);
+                    p.ellipse(0, 0, pulseSize);
+
+                    // Draw tentacles
+                    for (let i = 0; i < this.tentacles.length; i++) {
+                        const tentacle = this.tentacles[i];
+                        const angle = p.TWO_PI * i / this.tentacleCount;
+                        this.drawTentacle(angle, tentacle);
+                    }
+
+                    p.pop();
+                }
+
+                drawTentacle(baseAngle, tentacle) {
+                    p.push();
+                    p.noFill();
+                    p.stroke(this.hue, 80, 100, 0.8);
+                    p.strokeWeight(2);
+
+                    let prevX = 0;
+                    let prevY = 0;
+                    const segmentLength = tentacle.length / tentacle.segments;
+
+                    for (let i = 0; i <= tentacle.segments; i++) {
+                        const noiseVal = p.noise(tentacle.noiseOffset + i * 0.2, p.frameCount * 0.01);
+                        const sway = p.map(noiseVal, 0, 1, -0.5, 0.5);
+                        const currentAngle = baseAngle + sway;
+
+                        const x = p.cos(currentAngle) * segmentLength * i;
+                        const y = p.sin(currentAngle) * segmentLength * i;
+
+                        if (i > 0) {
+                            p.line(prevX, prevY, x, y);
+                        }
+
+                        prevX = x;
+                        prevY = y;
+                    }
+
+                    tentacle.noiseOffset += 0.005;
+                    p.pop();
+                }
+            }
+
+            // Particle class
+            class Particle {
+                constructor() {
+                    this.reset();
+                }
+
+                reset() {
+                    this.pos = p.createVector(
+                        p.random(p.width),
+                        p.random(p.height)
+                    );
+                    this.size = p.random(1, 3);
+                    this.speed = p.random(0.2, 0.5);
+                    this.hue = p.random(200, 240);
+                    this.alpha = p.random(0.2, 0.6);
+                    this.angle = p.random(p.TWO_PI);
+                    this.depth = p.random(0.5, 2);
+                }
+
+                update() {
+                    // Gentle drifting motion
+                    this.pos.x += p.cos(this.angle) * this.speed * this.depth;
+                    this.pos.y += p.sin(this.angle) * this.speed * this.depth;
+
+                    // Random direction changes
+                    if (p.random() < 0.01) {
+                        this.angle += p.random(-0.5, 0.5);
+                    }
+
+                    // Wrap around edges
+                    if (this.pos.x < -10) this.pos.x = p.width + 10;
+                    if (this.pos.x > p.width + 10) this.pos.x = -10;
+                    if (this.pos.y < -10) this.pos.y = p.height + 10;
+                    if (this.pos.y > p.height + 10) this.pos.y = -10;
+                }
+
+                display() {
+                    p.fill(this.hue, 30, 100, this.alpha);
+                    p.noStroke();
+                    p.ellipse(this.pos.x, this.pos.y, this.size * this.depth);
+                }
+            }
+
+            // Bubble class
+            class Bubble {
+                constructor(x, y) {
+                    this.pos = p.createVector(x, y);
+                    this.vel = p.createVector(p.random(-1, 1), p.random(-3, -1));
+                    this.size = p.random(5, 15);
+                    this.life = p.random(100, 200);
+                    this.maxLife = this.life;
+                    this.wobbleOffset = p.random(1000);
+                }
+
+                update() {
+                    this.pos.add(this.vel);
+                    this.vel.x *= 0.98;
+                    this.vel.y *= 0.98;
+                    this.life--;
+                }
+
+                display() {
+                    const wobble = p.noise(this.wobbleOffset + p.frameCount * 0.1) * 0.2;
+                    const currentSize = this.size * (1 + wobble);
+                    const alpha = p.map(this.life, this.maxLife, 0, 0.8, 0);
+
+                    p.push();
+                    p.fill(200, 30, 100, alpha);
+                    p.noStroke();
+                    p.ellipse(this.pos.x, this.pos.y, currentSize);
+                    
+                    // Bubble highlight
+                    p.fill(200, 10, 100, alpha + 0.2);
+                    p.ellipse(
+                        this.pos.x - currentSize * 0.3,
+                        this.pos.y - currentSize * 0.3,
+                        currentSize * 0.3
+                    );
+                    p.pop();
+
+                    this.wobbleOffset += 0.05;
+                }
+
+                isOffScreen() {
+                    return this.pos.y < -this.size || 
+                           this.pos.x < -this.size || 
+                           this.pos.x > p.width + this.size || 
+                           this.life <= 0;
+                }
+            }
+
+            // LightRay class
+            class LightRay {
+                constructor() {
+                    this.reset();
+                }
+
+                reset() {
+                    this.x = p.random(p.width);
+                    this.width = p.random(50, 150);
+                    this.speed = p.random(0.2, 0.5);
+                    this.alpha = p.random(0.02, 0.05);
+                    this.hue = p.random(190, 210);
+                    this.direction = p.random() > 0.5 ? 1 : -1;
+                }
+
+                update() {
+                    this.x += this.speed * this.direction;
+                    if (this.x < -this.width || this.x > p.width + this.width) {
+                        this.reset();
+                        this.x = this.direction > 0 ? -this.width : p.width + this.width;
+                    }
+                }
+
+                display() {
+                    p.push();
+                    p.noStroke();
+                    for (let i = 0; i < 5; i++) {
+                        const yOffset = i * 50;
+                        const gradient = p.drawingContext.createLinearGradient(
+                            this.x - this.width, yOffset,
+                            this.x + this.width, yOffset
+                        );
+                        gradient.addColorStop(0, p.color(this.hue, 30, 100, 0));
+                        gradient.addColorStop(0.5, p.color(this.hue, 30, 100, this.alpha));
+                        gradient.addColorStop(1, p.color(this.hue, 30, 100, 0));
+
+                        p.drawingContext.fillStyle = gradient;
+                        p.rect(this.x - this.width, yOffset, this.width * 2, 2);
+                    }
+                    p.pop();
+                }
+            }
+        };
+
+        new p5(sketch);
+    
+  // Touch event handlers for mobile compatibility
+  p.touchMoved = function() {
+    // Forward touch events to mouse events
+    if (typeof p.mouseMoved === 'function') {
+      p.mouseMoved();
+    }
+    return false; // Prevent default
+  };
+  
+  p.touchStarted = function() {
+    // Forward to mousePressed
+    if (typeof p.mousePressed === 'function') {
+      p.mousePressed();
+    }
+    return false; // Prevent default
+  };
+  
+  p.touchEnded = function() {
+    // Forward to mouseReleased
+    if (typeof p.mouseReleased === 'function') {
+      p.mouseReleased();
+    }
+    return false; // Prevent default
+  };
+  // Fullscreen toggle
+  document.getElementById('fs-toggle').addEventListener('click', function() {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(err => {
+        console.log('Fullscreen request failed: ', err);
+      });
+    } else {
+      if (document.exitFullscreen) {
+        document.exitFullscreen();
+      }
+    }
+  });
+  
+  // Hide fullscreen button after inactivity
+  const fsButton = document.getElementById('fs-toggle');
+  let timeout;
+  document.addEventListener('mousemove', function() {
+    fsButton.style.opacity = '0.3';
+    clearTimeout(timeout);
+    timeout = setTimeout(() => {
+      fsButton.style.opacity = '0';
+    }, 2000);
+  });
+  </script>
+
+              
+          
+                
+          
+              
